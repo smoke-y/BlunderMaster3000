@@ -47,7 +47,7 @@ while True:
             pred = model.forward(b)
             pred = pred.detach().cpu().numpy()
             e = e.detach().cpu().numpy()
-            if (e > 0 and pred > 0) or (e < 0 and pred < 0):
+            if (e > 0 and pred < 0) or (e < 0 and pred > 0):
                 b = b.detach().cpu().squeeze(0).numpy()
                 print(convertBitBoardToFEN(b), end=" | ")
             print(f"pred: {pred}, eval: {e}")

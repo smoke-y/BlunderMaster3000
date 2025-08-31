@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Game</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #board {
+            width: 400px;
+            height: 400px;
+            margin: 20px auto;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+        }
+        .square {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 30px;
+            cursor: pointer;
+        }
+        .white {
+            background-color: #f0d9b5;
+        }
+        .black {
+            background-color: #b58863;
+        }
+        .selected {
+            background-color: yellow;
+        }
+        #controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 0 5px;
+            cursor: pointer;
+        }
+        #status {
+            text-align: center;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .loading {
+            color: blue;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Chess Game</h1>
+    <div id="controls">
+        <label>
+            <input type="radio" name="color" value="white" checked> Play as White
+        </label>
+        <label>
+            <input type="radio" name="color" value="black"> Play as Black
+        </label>
+        <button id="startBtn">Start Game</button>
+    </div>
+    <div id="board"></div>
+    <div id="status">Select your color and start the game</div>
+
+    <script>
+        // Unicode chess pieces
+        const pieceUnicode = {
+            'wK': '♔', 'wQ': '♕', 'wR': '♖', 'wB': '♗', 'wN': '♘', 'wP': '♙',
+            'bK': '♚', 'bQ': '♛', 'bR': '♜', 'bB': '♝', 'bN': '♞', 'bP': '♟'
+        };
+
+        // Global variables
+        let chess = new Chess();
+        let selectedPiece = null;
+        let selectedSquare = null;
+        let playerColor = 'white';
+        let boardElement = document.getElementById('board');
+        let statusElement = document.getElementById('status');
+        let boardFlipped = false;
+        let abortController = null;
+
+        // Initialize the board
+        function createBoard() {
+            boardElement.innerHTML = '';
+            
+            // Determine if board should be flipped
+            boardFlipped = (playerColor === 'black');
+            
+            for (let i = 0; i < 8; i++) {
+                for (let j = 0; j < 8; j++) {
+                    const square = document.createElement('div');
+                    square.classList.add('square');
+                    
+                    // Calculate display coordinates (flipped if playing as black)
+                    const displayRow = boardFlipped ? 7 - i : i;
+                    const displayCol = boardFlipped ? 7 - j : j;
+                    
+                    square.classList.add((displayRow + displayCol) % 2 === 0 ? 'white' : 'black');
+                    square.dataset.row = i;
+                    square.dataset.col = j;
+                    
+                    // Store both display and actual coordinates
+                    square.dataset.displayRow = displayRow;
+                    square.dataset.displayCol = displayCol;
+                    square.dataset.square = String.fromCharCode(97 + j) + (8 - i);
+                    
+                    square.addEventListener('click', handleSquareClick);
+                    boardElement.appendChild(square);
+                }
+            }
+            updateBoard();
+        }
+
+        // Update the board with current positions
+        function updateBoard() {
+            const squares = boardElement.querySelectorAll('.square');
+            squares.forEach(square => {
+                square.textContent = '';
+                square.classList.remove('selected');
+                
+                const squareName = square.dataset.square;
+                const piece = chess.get(squareName);
+                
+                if (piece) {
+                    const pieceCode = piece.color + piece.type.toUpperCase();
+                    square.textContent = pieceUnicode[pieceCode];
+                }
+            });
+
+            // Highlight selected square if any
+            if (selectedSquare) {
+                const squareElement = boardElement.querySelector(
+                    `.square[data-row="${selectedSquare.dataset.row}"][data-col="${selectedSquare.dataset.col}"]`
+                );
+                if (squareElement) {
+                    squareElement.classList.add('selected');
+                }
+            }
+
+            // Update status
+            if (chess.in_checkmate()) {
+                statusElement.textContent = `Checkmate! ${chess.turn() === 'w' ? 'Black' : 'White'} wins!`;
+                statusElement.className = '';
+            } else if (chess.in_draw()) {
+                statusElement.textContent = "It's a draw!";
+                statusElement.className = '';
+            } else if (chess.in_check()) {
+                statusElement.textContent = `${chess.turn() === 'w' ? 'White' : 'Black'} is in check`;
+                statusElement.className = '';
+            } else {
+                statusElement.textContent = `${chess.turn() === 'w' ? 'White' : 'Black'} to move`;
+                statusElement.className = '';
+            }
+        }
+
+        // Handle square clicks
+        function handleSquareClick(event) {
+            const square = event.currentTarget;
+            const squareName = square.dataset.square;
+            
+            // If it's the bot's turn, ignore clicks
+            if ((playerColor === 'white' && chess.turn() === 'b') || 
+                (playerColor === 'black' && chess.turn() === 'w')) {
+                return;
+            }
+
+            // If a piece is already selected, try to move it
+            if (selectedPiece) {
+                const move = {
+                    from: selectedPiece,
+                    to: squareName,
+                    promotion: 'q' // Always promote to queen for simplicity
+                };
+
+                // Try to make the move
+                if (chess.move(move)) {
+                    // Send FEN to server
+                    sendFenToServer(chess.fen());
+                } else {
+                    // Invalid move, reset selection
+                    resetSelection();
+                }
+            } else {
+                // Select a piece
+                const piece = chess.get(squareName);
+                if (piece && ((playerColor === 'white' && piece.color === 'w') || 
+                              (playerColor === 'black' && piece.color === 'b'))) {
+                    selectedPiece = squareName;
+                    selectedSquare = square;
+                    updateBoard(); // This will highlight the selected square
+                }
+            }
+        }
+
+        // Reset selection
+        function resetSelection() {
+            selectedPiece = null;
+            selectedSquare = null;
+            updateBoard();
+        }
+
+        // Send FEN to server
+        async function sendFenToServer(fen) {
+            // Abort any previous request
+            if (abortController) {
+                abortController.abort();
+            }
+            
+            abortController = new AbortController();
+            const signal = abortController.signal;
+            
+            try {
+                statusElement.textContent = "Waiting for bot's move... (this may take a while)";
+                statusElement.className = 'loading';
+                
+                const response = await fetch('/make-move', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ fen: fen }),
+                    signal: signal
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                if (data.fen) {
+                    chess.load(data.fen);
+                    updateBoard();
+                    resetSelection();
+                }
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('Request aborted');
+                } else {
+                    console.error('Error:', error);
+                    statusElement.textContent = 'Error communicating with server';
+                    statusElement.className = 'error';
+                }
+            }
+        }
+
+        // Start the game
+        document.getElementById('startBtn').addEventListener('click', function() {
+            playerColor = document.querySelector('input[name="color"]:checked').value;
+            chess.reset();
+            createBoard();
+            
+            // If playing as black, let the bot make the first move
+            if (playerColor === 'black') {
+                sendFenToServer(chess.fen());
+            }
+        });
+
+        // Initialize the board on page load
+        createBoard();
+    </script>
+</body>
+</html>

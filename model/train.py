@@ -5,7 +5,7 @@ from sys import argv
 
 device = "cuda"
 EPOCH = 5
-MINI_BATCH = 34
+MINI_BATCH = 32
 
 torch.manual_seed(0)
 torch.set_float32_matmul_precision("high")
@@ -22,6 +22,7 @@ file = open("data/train.bin", "rb")
 epoch = 0
 batchCount = 0
 avgLoss = 0
+cons = 0
 while epoch < EPOCH:
     print("EPOCH:", epoch)
     while True:
@@ -29,12 +30,10 @@ while epoch < EPOCH:
             bigBatch = pickle.load(file)
             boards = torch.from_numpy(bigBatch[0])
             evls = torch.from_numpy(bigBatch[1]).unsqueeze(-1)
-            turns = torch.from_numpy(bigBatch[2]).unsqueeze(-1)
             for i in range(0, len(boards), MINI_BATCH):
                 endx = min(i+MINI_BATCH, len(boards))
                 b = boards[i:endx, :, :, :].type(torch.float32).to(device)
                 e = evls[i:endx, :].type(torch.float32).to(device)
-                t = turns[i:endx, :].type(torch.float32).to(device)
                 optimizer.zero_grad()
                 pred = model.forward(b)
                 loss = criterion(pred, e)
@@ -43,11 +42,16 @@ while epoch < EPOCH:
                 lossVal = loss.detach().cpu()
                 avgLoss += lossVal
                 batchCount += 1
-                #print(f"loss: {lossVal}", end='\r')
-                #print(f"loss: {lossVal}")
+                l = avgLoss/batchCount
+                if l <= 0.108: cons += 1
+                else: cons = 0
+                if cons == 3:
+                    epoch = EPOCH
+                    break
+                if batchCount % 500 == 0:
+                    print(f"\ravg loss: {l}, batch: {batchCount}, i: {i}", end="")
         except EOFError:
             epoch += 1
-            print(f"avg loss: {avgLoss/batchCount}")
             file.seek(0)
             batchCount = 0
             avgLoss = 0.0

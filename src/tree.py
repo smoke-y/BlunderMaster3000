@@ -14,7 +14,7 @@ class Node:
         self.children = []
         self.board = board
 
-device = "cuda"
+device = "cpu"
 model = ChessEval()
 #model.load_state_dict(torch.load("eval.pth", weights_only=True))
 model.to(device)
@@ -74,6 +74,3 @@ def buildTree(board: chess.Board, depth: int) -> Node:
 def dumpTree(root: Node, pad: int=0) -> None:
     print(f"{pad*"    "}{root.board}")
     for child in root.children: dumpTree(child, pad+1)
-
-root = buildTree(chess.Board(), 2)
-dumpTree(root)
