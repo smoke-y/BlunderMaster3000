@@ -15,7 +15,7 @@ if len(argv) > 1:
     model.load_state_dict(torch.load("eval.pth", weights_only=True))
 model = model.to(device)
 criterion = torch.nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr = 0.0001)
+optimizer = torch.optim.Adam(model.parameters(), lr = 0.00001)
 model = torch.compile(model)
 
 file = open("data/train.bin", "rb")
@@ -43,7 +43,7 @@ while epoch < EPOCH:
                 avgLoss += lossVal
                 batchCount += 1
                 l = avgLoss/batchCount
-                if l <= 0.108: cons += 1
+                if l <= 0.109: cons += 1
                 else: cons = 0
                 if cons == 3:
                     epoch = EPOCH
