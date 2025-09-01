@@ -4,9 +4,12 @@ import chess
 import os
 import sys
 import random
-import socket
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.tree import *
+import src.nn as nn
+import src.handmade as hn
+
+TYPE = 'hn'
+if len(sys.argv) > 1: TYPE = sys.argv[1]
 
 class ChessRequestHandler(BaseHTTPRequestHandler):
     # Set a longer timeout for requests
@@ -75,18 +78,12 @@ class ChessRequestHandler(BaseHTTPRequestHandler):
         if board.is_game_over():
             return fen
         
-        # Use your bot logic here
-        try:
-            root = buildTree(board, 1)
+        if TYPE == 'nn':
+            root = nn.buildTree(board, 1)
             best_move = random.choice(root.children)
             board = chess.Board(best_move.board)
-        except Exception as e:
-            # Fallback to random move if your bot has issues
-            print(f"Bot error: {e}, using random move as fallback")
-            legal_moves = list(board.legal_moves)
-            if legal_moves:
-                move = random.choice(legal_moves)
-                board.push(move)
+            return board.fen()
+        else: hn.computer_move(board)
         
         return board.fen()
 
